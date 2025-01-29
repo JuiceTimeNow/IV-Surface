@@ -3,8 +3,11 @@
 Created on Wed Jan 22 00:42:48 2025
 
 @author: richs
-"""
 
+inspired by this project here: 
+    https://volatilitysurface.streamlit.app/
+"""
+#imports
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -14,15 +17,44 @@ from scipy.stats import norm
 from scipy.optimize import brentq
 from scipy.interpolate import griddata
 import plotly.graph_objects as go
+#end imports
 
 
 st.title('Implied Volatility Surface')
 
-def bs_call_price(S, K, T, r, sigma, q=0):
-    d1 = (np.log(S / K) + (r - q + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
+# Begin functions
+
+def bs_call_no_div(S, K, T, r, sigma):
+    N = norm.cdf
+    d1 = (np.log(S/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T))
     d2 = d1 - sigma * np.sqrt(T)
-    call_price = S * np.exp(-q * T) * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+    call_price = S * N(d1) - K * np.exp(-r*T)* N(d2)
     return call_price
+
+def bs_call_div(S, K, T, r, q, sigma):
+    N = norm.cdf
+    d1 = (np.log(S/K) + (r - q + sigma**2/2)*T) / (sigma*np.sqrt(T))
+    d2 = d1 - sigma* np.sqrt(T)
+    call_price = S*np.exp(-q*T) * N(d1) - K * np.exp(-r*T)* N(d2)
+    return call_price
+
+def bs_put_no_div(S, K, T, r, sigma):
+    N = norm.cdf
+    d1 = (np.log(S/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T))
+    d2 = d1 - sigma* np.sqrt(T)
+    put_price = K*np.exp(-r*T)*N(-d2) - S*N(-d1)
+    return put_price
+
+def bs_put_div(S, K, T, r, q, sigma):
+    N = norm.cdf
+    d1 = (np.log(S/K) + (r - q + sigma**2/2)*T) / (sigma*np.sqrt(T))
+    d2 = d1 - sigma* np.sqrt(T)
+    put_price = K*np.exp(-r*T)*N(-d2) - S*np.exp(-q*T)*N(-d1)
+    return put_price
+
+
+
+
 
 def implied_volatility(price, S, K, T, r, q=0):
     if T <= 0 or price <= 0:
@@ -37,6 +69,10 @@ def implied_volatility(price, S, K, T, r, q=0):
         implied_vol = np.nan
 
     return implied_vol
+
+
+
+# end functions
 
 st.sidebar.header('Model Parameters')
 st.sidebar.write('Adjust the parameters for the Black-Scholes model.')
@@ -215,8 +251,3 @@ else:
         )
 
         st.plotly_chart(fig)
-
-        st.write("---")
-        st.markdown(
-            "Created by Mateusz Jastrzębski  |   [LinkedIn](https://www.linkedin.com/in/mateusz-jastrz%C4%99bski-8a2622264/)"
-        )
