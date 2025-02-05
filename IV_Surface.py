@@ -89,6 +89,11 @@ dividend_yield = st.sidebar.number_input(
     format="%.4f"
 )
 
+option_type = st.sidebar.selectbox(
+    'Option Type (Call || Put)',
+    ('Call', 'Put')
+)
+
 st.sidebar.header('Visualization Parameters')
 y_axis_option = st.sidebar.selectbox(
     'Select Y-axis:',
@@ -141,17 +146,20 @@ exp_dates = [pd.Timestamp(exp) for exp in expirations if pd.Timestamp(exp) > tod
 if not exp_dates:
     st.error(f'No available option expiration dates for {ticker_symbol}.')
 else:
-    option_data = []
+    option_call_data = []
+    option_put_data = []
 
     for exp_date in exp_dates:
         try:
             opt_chain = ticker.option_chain(exp_date.strftime('%Y-%m-%d'))
             calls = opt_chain.calls
+            puts = opt_chain.puts
         except Exception as e:
             st.warning(f'Failed to fetch option chain for {exp_date.date()}: {e}')
             continue
 
         calls = calls[(calls['bid'] > 0) & (calls['ask'] > 0)]
+        puts = puts[(puts['bid'] > 0) & (puts['ask'] > 0)]
 
         for index, row in calls.iterrows():
             strike = row['strike']
@@ -159,18 +167,33 @@ else:
             ask = row['ask']
             mid_price = (bid + ask) / 2
 
-            option_data.append({
+            option_call_data.append({
                 'expirationDate': exp_date,
                 'strike': strike,
                 'bid': bid,
                 'ask': ask,
                 'mid': mid_price
             })
+            
+            for index, row in puts.iterrows():
+                strike = row['strike']
+                bid = row['bid']
+                ask = row['ask']
+                mid_price = (bid + ask) / 2
 
-    if not option_data:
+                option_put_data.append({
+                    'expirationDate': exp_date,
+                    'strike': strike,
+                    'bid': bid,
+                    'ask': ask,
+                    'mid': mid_price
+                })
+
+    if not option_call_data:
         st.error('No option data available after filtering.')
     else:
-        options_df = pd.DataFrame(option_data)
+        call_options_df = pd.DataFrame(option_call_data)
+        put_options_df = pd.DataFrame(option_put_data)
 
         try:
             spot_history = ticker.history(period='5d')
@@ -183,15 +206,24 @@ else:
             st.error(f'An error occurred while fetching spot price data: {e}')
             st.stop()
 
-        options_df['daysToExpiration'] = (options_df['expirationDate'] - today).dt.days
-        options_df['timeToExpiration'] = options_df['daysToExpiration'] / 365
+        call_options_df['daysToExpiration'] = (call_options_df['expirationDate'] - today).dt.days
+        call_options_df['timeToExpiration'] = call_options_df['daysToExpiration'] / 365
+        
+        put_options_df['daysToExpiration'] = (put_options_df['expirationDate'] - today).dt.days
+        put_options_df['timeToExpiration'] = put_options_df['daysToExpiration'] / 365
 
-        options_df = options_df[
-            (options_df['strike'] >= spot_price * (min_strike_pct / 100)) &
-            (options_df['strike'] <= spot_price * (max_strike_pct / 100))
+        call_options_df = call_options_df[
+            (call_options_df['strike'] >= spot_price * (min_strike_pct / 100)) &
+            (call_options_df['strike'] <= spot_price * (max_strike_pct / 100))
+        ]
+        
+        put_options_df = put_options_df[
+            (put_options_df['strike'] >= spot_price * (min_strike_pct / 100)) &
+            (put_options_df['strike'] <= spot_price * (max_strike_pct / 100))
         ]
 
-        options_df.reset_index(drop=True, inplace=True)
+        call_options_df.reset_index(drop=True, inplace=True)
+        put_options_df.reset_index(drop=True, inplace=True)
 
         with st.spinner('Calculating implied volatility...'):
             options_df['impliedVolatility'] = options_df.apply(
